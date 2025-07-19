@@ -9,6 +9,9 @@ using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Enums;
+using AgGateway.ADAPT.ApplicationDataModel.ADM;
+using AgGateway.ADAPT.ShippedItemInstancePlugin;
+using AgGateway.ADAPT.ISOv4Plugin.ObjectModel;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Newtonsoft.Json;
@@ -36,6 +39,7 @@ namespace ShippedItemInstanceConverter
             bool nativeOut = false;
             bool isoOut = false;
             bool admOut = false;
+            bool adaptStandardOut = false;
             if (req.Headers.TryGetValue("content-type", out Microsoft.Extensions.Primitives.StringValues contentHeaders))
             {
                 //Determine output type from header
@@ -46,6 +50,10 @@ namespace ShippedItemInstanceConverter
                 else if (contentHeaders.Contains("application/vnd.aggateway.adapt.adm+zip"))
                 {
                     admOut = true;
+                }
+                else if (contentHeaders.Contains("application/vnd.aggateway.adapt.standard+zip"))
+                {
+                    adaptStandardOut = true;
                 }
                 else
                 {
@@ -58,10 +66,22 @@ namespace ShippedItemInstanceConverter
                 input = input.Replace("\r\n", string.Empty).Replace("\t", string.Empty).Replace(" ", string.Empty); //Remove whitespace in the request as desired
 
                 //Override the default location of the ADAPT resource files to accomodate placement within Azure function   
+
+                // ADAPT resource locations
                 AgGateway.ADAPT.Representation.UnitSystem.UnitSystemManager.UnitSystemDataLocation = System.IO.Path.Combine(executionContext.FunctionDirectory, "../Resources", "UnitSystem.xml");
                 AgGateway.ADAPT.Representation.RepresentationSystem.RepresentationManager.RepresentationSystemDataLocation = System.IO.Path.Combine(executionContext.FunctionDirectory, "../Resources", "RepresentationSystem.xml");
+
+                // ISO Plugin resource locations
                 AgGateway.ADAPT.ISOv4Plugin.Representation.DdiLoader.DDIDataFile = System.IO.Path.Combine(executionContext.FunctionDirectory, "../Resources", "ddiExport.txt");
                 AgGateway.ADAPT.ISOv4Plugin.Representation.IsoUnitOfMeasureList.ISOUOMDataFile = System.IO.Path.Combine(executionContext.FunctionDirectory, "../Resources", "IsoUnitOfMeasure.xml");
+
+                // StandardPlugin resource locations 
+                // 
+                // There are the two files in CommonExporters.cs, internal class CommonExporters; perhaps all resource file locations should be set here
+                // other files are in /resources folder
+                //
+                // AgGateway.ADAPT.StandardPlugin.TypeMappingsFileLocation = System.IO.Path.Combine(executionContext.FunctionDirectory, "../", "framework-to-standard-type-mappings.json");
+                // AgGateway.ADAPT.StandardPlugin.StandardDataTypesFileLocatiom = System.IO.Path.Combine(executionContext.FunctionDirectory, "../", "adapt-data-type-definitions.json");
 
                 //Write the input to a file so that the ShippedItemInstance plugin can read it
                 string folder = System.IO.Path.GetTempPath();
@@ -105,7 +125,11 @@ namespace ShippedItemInstanceConverter
                             AgGateway.ADAPT.ADMPlugin.Plugin admPlugin = new AgGateway.ADAPT.ADMPlugin.Plugin();
                             admPlugin.Export(inputData, outputPath);
                         }
-
+                        else if (adaptStandardOut)
+                        {
+                            AgGateway.ADAPT.StandardPlugin.Plugin adaptStandardPlugin = new AgGateway.ADAPT.StandardPlugin.Plugin();
+                            adaptStandardPlugin.Export(inputData, outputPath);
+                        }
                         System.IO.Compression.ZipFile.CreateFromDirectory(outputPath, outputZip);
                         return new FileContentResult(File.ReadAllBytes(outputZip), "application/octet-stream");
                     }
